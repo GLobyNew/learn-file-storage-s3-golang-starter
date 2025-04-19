@@ -1,10 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -46,14 +48,29 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := header.Header.Get("Content-Type")
-	imgData, err := io.ReadAll(file)
+	contentType := header.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Problem with loading image data using ReadAll", err)
+		respondWithError(w, http.StatusInternalServerError, "Can't get extension from Content-Type header", err)
+		return
 	}
+
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusInternalServerError, "Forbidden upload type (only jpeg/png allowed)", nil)
+		return
+	}
+	extensions, err := mime.ExtensionsByType(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Can't get extension from Content-Type header", err)
+		return
+	}
+	ext := extensions[0]
+
+
 	videoMetaInfo, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Can't get video meta info from db", err)
+		return
 	}
 
 	if videoMetaInfo.UserID != userID {
@@ -61,10 +78,15 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	imgDataEncoded := base64.StdEncoding.EncodeToString(imgData)
-	dataURL := fmt.Sprintf("data:%v;base64,%v", mediaType, imgDataEncoded)
+	path := filepath.Join(cfg.assetsRoot, fmt.Sprint(videoIDString, ext))
+	thumbnailFile, err := os.Create(path)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Can't create a file", err)
+	}
 
+	io.Copy(thumbnailFile, file)
 
+	dataURL := fmt.Sprintf("http://localhost:%v/assets/%v%v", cfg.port, videoIDString, ext)
 
 	videoMetaInfo.UpdatedAt = time.Now()
 	videoMetaInfo.ThumbnailURL = &dataURL
