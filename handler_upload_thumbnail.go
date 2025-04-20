@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -66,7 +68,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	ext := extensions[0]
 
-
 	videoMetaInfo, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Can't get video meta info from db", err)
@@ -78,7 +79,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	path := filepath.Join(cfg.assetsRoot, fmt.Sprint(videoIDString, ext))
+	randomBytes := make([]byte, 32)
+	rand.Read(randomBytes)
+	newThumbName := make([]byte, base64.RawURLEncoding.EncodedLen(len(randomBytes)))
+	base64.RawURLEncoding.Encode(newThumbName, randomBytes)
+	path := filepath.Join(cfg.assetsRoot, fmt.Sprint(string(newThumbName), ext))
 	thumbnailFile, err := os.Create(path)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Can't create a file", err)
@@ -86,7 +91,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	io.Copy(thumbnailFile, file)
 
-	dataURL := fmt.Sprintf("http://localhost:%v/assets/%v%v", cfg.port, videoIDString, ext)
+	dataURL := fmt.Sprintf("http://localhost:%v/assets/%v%v", cfg.port, string(newThumbName), ext)
 
 	videoMetaInfo.UpdatedAt = time.Now()
 	videoMetaInfo.ThumbnailURL = &dataURL
