@@ -85,7 +85,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Can't create temp temp dir/file", err)
 		return
 	}
-	defer os.Remove(videoName)
+	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
 	io.Copy(tmpFile, file)
@@ -106,12 +106,26 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		strAspectRatio = "portrait"
 	}
 
+	fastStartFilePath, err := processVideoForFastStart(tmpFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error while converting video for fast start", err)
+		return
+	}
+
+	fastStartFile, err := os.Open(fastStartFilePath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error opening processed video file", err)
+		return
+	}
+	defer os.Remove(fastStartFile.Name())
+	defer fastStartFile.Close()
+
 	videoNameToUpload := fmt.Sprint(strAspectRatio, "/", string(newVideoName), ext)
 
 	cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &videoNameToUpload,
-		Body:        tmpFile,
+		Body:        fastStartFile,
 		ContentType: &contentType,
 	})
 
