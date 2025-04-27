@@ -129,14 +129,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		ContentType: &contentType,
 	})
 
-	videoURL := cfg.s3Bucket + "," + videoNameToUpload
+	videoURL := fmt.Sprintf("%v/%v", cfg.s3CfDistribution, videoNameToUpload)
 	videoInfo.VideoURL = &videoURL
 	cfg.db.UpdateVideo(videoInfo)
 
-	presignedVideo, err := cfg.dbVideoToSignedVideo(videoInfo)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error making presigned video in upload handler", err)
-		return
-	}
-	respondWithJSON(w, http.StatusOK, presignedVideo)
+	respondWithJSON(w, http.StatusOK, videoInfo)
 }
